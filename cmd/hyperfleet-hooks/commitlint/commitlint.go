@@ -158,7 +158,9 @@ func validatePR(ctx context.Context, validator *commitlint.Validator) error {
 	// Get all commits in range using git log
 	commits, err := getCommitsInRange(repo, baseSHA, headSHA)
 	if err != nil {
-		return fmt.Errorf("failed to get commits: %w", err)
+		fmt.Fprintf(os.Stderr, "⚠️  Local git history unavailable: %v\n", err)
+		fmt.Fprintln(os.Stderr, "   Falling back to GitHub API...")
+		return validatePRFromAPI(ctx, validator)
 	}
 
 	if len(commits) == 0 {
@@ -176,6 +178,54 @@ func validatePR(ctx context.Context, validator *commitlint.Validator) error {
 
 	// Print summary and return result
 	return printSummary(failedCommits, prTitleFailed, commits, passedCount, title)
+}
+
+func validatePRFromAPI(ctx context.Context, validator *commitlint.Validator) error {
+	client := ghclient.NewClient()
+
+	apiCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	prCommits, err := client.GetPRCommitsFromEnv(apiCtx)
+	if err != nil {
+		return fmt.Errorf("failed to get commits from GitHub API: %w", err)
+	}
+
+	if len(prCommits) == 0 {
+		fmt.Fprintln(os.Stderr, "⚠️  No commits found in PR")
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "📝 Found %d commit(s) to validate (via GitHub API)\n\n", len(prCommits))
+
+	var failedCommits []string
+	var passedCount int
+	commitSHAs := make([]string, 0, len(prCommits))
+
+	for _, pc := range prCommits {
+		commitSHAs = append(commitSHAs, pc.SHA)
+		subject := strings.SplitN(strings.TrimSpace(pc.Message), "\n", 2)[0]
+		fmt.Fprintf(os.Stderr, "Checking: %s - %s\n", shortSHA(pc.SHA), subject)
+
+		result := validator.Validate(strings.TrimSpace(pc.Message))
+		if result.Valid {
+			fmt.Fprintln(os.Stderr, "  ✅ PASS")
+			passedCount++
+		} else {
+			fmt.Fprintln(os.Stderr, "  ❌ FAIL")
+			fmt.Fprintln(os.Stderr, "")
+			fmt.Fprintln(os.Stderr, "  Error details:")
+			for _, e := range result.Errors {
+				fmt.Fprintf(os.Stderr, "    ✖ %s\n", e.Error())
+			}
+			fmt.Fprintln(os.Stderr, "")
+			failedCommits = append(failedCommits, shortSHA(pc.SHA))
+		}
+	}
+
+	title, prTitleFailed := validatePRTitle(ctx, validator)
+
+	return printSummary(failedCommits, prTitleFailed, commitSHAs, passedCount, title)
 }
 
 // validateCommits validates each commit message and returns failed commit SHAs and passed count
