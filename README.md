@@ -104,24 +104,28 @@ make image    # Build container image
 
 ### Releasing a New Version
 
-To build and publish the container image to quay.io:
-
-1. Create a release tag:
+1. Create and push a release tag:
 
    ```bash
    git tag v0.1.0
    git push upstream v0.1.0
    ```
 
-2. Build the container image (tags both version and `latest`):
+2. Build the linux/amd64 binary and create a GitHub release with it:
+
+   ```bash
+   GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o /tmp/hyperfleet-hooks-linux-amd64 ./cmd/hyperfleet-hooks
+   gh release create v0.1.0 --repo openshift-hyperfleet/hyperfleet-hooks \
+     --title "v0.1.0" --notes "Release notes here" \
+     /tmp/hyperfleet-hooks-linux-amd64
+   ```
+
+   The binary is consumed by the Prow CI step (`hyperfleet-commitlint`) which downloads it directly from the GitHub release instead of compiling from source.
+
+3. Build and push the container image to quay.io:
 
    ```bash
    make image IMAGE_TAG=v0.1.0
-   ```
-
-3. Push the image to quay.io:
-
-   ```bash
    make image-push IMAGE_TAG=v0.1.0
    ```
 
