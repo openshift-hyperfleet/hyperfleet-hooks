@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/openshift-hyperfleet/hyperfleet-hooks/pkg/commitlint"
 	ghclient "github.com/openshift-hyperfleet/hyperfleet-hooks/pkg/github"
 	"github.com/spf13/cobra"
@@ -22,9 +22,6 @@ const commitStandardURL = "https://github.com/openshift-hyperfleet/" +
 	"architecture/blob/main/hyperfleet/standards/commit-standard.md"
 
 var (
-	// errStopIteration is used to stop commit iteration when base is reached
-	errStopIteration = errors.New("stop iteration")
-
 	// errValidationFailed is returned when commit message validation fails
 	errValidationFailed = errors.New("validation failed")
 
@@ -420,45 +417,31 @@ func validateSHA(sha string) error {
 	return nil
 }
 
-// maxCommitsInRange is a safeguard to prevent unbounded iteration
-// when the base SHA is not an ancestor of the head SHA.
-const maxCommitsInRange = 1000
-
-// getCommitsInRange returns all commit SHAs in the given range
+// getCommitsInRange returns commit SHAs reachable from headSHA but not from baseSHA.
 func getCommitsInRange(repo *git.Repository, baseSHA, headSHA string) ([]string, error) {
-	// Get commit objects
-	headHash := plumbing.NewHash(headSHA)
-	baseHash := plumbing.NewHash(baseSHA)
-
-	// Create log iterator from head
-	commitIter, err := repo.Log(&git.LogOptions{
-		From: headHash,
-	})
+	wt, err := repo.Worktree()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get commit log: %w", err)
-	}
-	defer commitIter.Close()
-
-	var commits []string
-	err = commitIter.ForEach(func(c *object.Commit) error {
-		// Stop when we reach the base commit
-		if c.Hash == baseHash {
-			return errStopIteration
-		}
-		commits = append(commits, c.Hash.String())
-		if len(commits) >= maxCommitsInRange {
-			return fmt.Errorf("exceeded maximum of %d commits in range — base SHA %s may not be an ancestor of head SHA %s",
-				maxCommitsInRange, shortSHA(baseSHA), shortSHA(headSHA))
-		}
-		return nil
-	})
-
-	// errStopIteration is expected when we reach the base commit
-	if err != nil && !errors.Is(err, errStopIteration) {
-		return nil, fmt.Errorf("failed to iterate commits: %w", err)
+		return nil, fmt.Errorf("failed to get worktree: %w", err)
 	}
 
-	return commits, nil
+	cmd := exec.Command("git", "rev-list", baseSHA+".."+headSHA)
+	cmd.Dir = wt.Filesystem.Root()
+
+	output, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, fmt.Errorf("git rev-list failed: %s", strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, fmt.Errorf("failed to run git rev-list: %w", err)
+	}
+
+	trimmed := strings.TrimSpace(string(output))
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	return strings.Split(trimmed, "\n"), nil
 }
 
 // getCommitMessage returns the full message and subject of a commit

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 )
@@ -335,6 +336,59 @@ func TestGetCommitsInRange_Integration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetCommitsInRange_DivergedBranches(t *testing.T) {
+	tempDir := t.TempDir()
+	repo, err := git.PlainInit(tempDir, false)
+	require.NoError(t, err)
+
+	worktree, err := repo.Worktree()
+	require.NoError(t, err)
+
+	createCommit := func(filename, content, message string) string {
+		t.Helper()
+		testFile := filepath.Join(tempDir, filename)
+		require.NoError(t, os.WriteFile(testFile, []byte(content), 0644))
+		_, err := worktree.Add(filename)
+		require.NoError(t, err)
+		hash, err := worktree.Commit(message, &git.CommitOptions{
+			Author: &object.Signature{Name: "Test", Email: "test@example.com"},
+		})
+		require.NoError(t, err)
+		return hash.String()
+	}
+
+	// Create common ancestor on main
+	createCommit("init.txt", "init", "feat: initial commit")
+
+	// Create feature branch from this point
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName("feature"),
+		Create: true,
+	})
+	require.NoError(t, err)
+
+	// Add commits on feature branch (these are the PR commits)
+	prCommit1 := createCommit("feature1.txt", "f1", "feat: pr commit 1")
+	prCommit2 := createCommit("feature2.txt", "f2", "fix: pr commit 2")
+
+	// Go back to main and add more commits (simulates main moving forward)
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/master"),
+	})
+	require.NoError(t, err)
+
+	createCommit("main1.txt", "m1", "feat: main commit 1")
+	mainHead := createCommit("main2.txt", "m2", "feat: main commit 2")
+
+	// baseSHA = main HEAD, headSHA = feature HEAD (diverged)
+	// Should return only the 2 PR commits, not the main commits
+	commits, err := getCommitsInRange(repo, mainHead, prCommit2)
+	require.NoError(t, err)
+	require.Len(t, commits, 2, "should only return PR commits, not main branch commits")
+	require.Equal(t, prCommit2, commits[0])
+	require.Equal(t, prCommit1, commits[1])
 }
 
 func TestGetCommitMessage(t *testing.T) {
