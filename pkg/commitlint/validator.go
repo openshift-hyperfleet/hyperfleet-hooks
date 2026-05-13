@@ -9,10 +9,11 @@ import (
 
 // Validator validates commit messages against HyperFleet standards
 type Validator struct {
-	commitPattern    *regexp.Regexp
-	jiraPattern      *regexp.Regexp
-	validTypes       map[string]bool
-	maxSubjectLength int
+	commitPattern      *regexp.Regexp
+	jiraPattern        *regexp.Regexp
+	validTypes         map[string]bool
+	maxSubjectLength   int
+	whitelistedAuthors map[string]bool
 }
 
 // ValidationError represents a validation error
@@ -50,6 +51,10 @@ func NewValidator() *Validator {
 		maxSubjectLength: 72,
 		commitPattern:    regexp.MustCompile(`^(?:HYPERFLEET-\d+\s*-\s*)?([a-z]+):\s+(.*)$`),
 		jiraPattern:      regexp.MustCompile(`^HYPERFLEET-\d+\s*-\s*`),
+		whitelistedAuthors: map[string]bool{
+			"konflux@no-reply.konflux-ci.dev":          true,
+			"red-hat-konflux-kflux-prd-rh02[bot]":      true,
+		},
 	}
 }
 
@@ -148,6 +153,11 @@ func (v *Validator) ValidatePRTitle(title string) *ValidationResult {
 	}
 
 	return result
+}
+
+// IsWhitelistedAuthor returns true if the given identifier (email or GitHub login) belongs to a whitelisted bot account.
+func (v *Validator) IsWhitelistedAuthor(identifier string) bool {
+	return v.whitelistedAuthors[strings.ToLower(identifier)]
 }
 
 func (v *Validator) getValidTypesString() string {

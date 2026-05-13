@@ -8,6 +8,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	pkgcommitlint "github.com/openshift-hyperfleet/hyperfleet-hooks/pkg/commitlint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -391,76 +392,115 @@ func TestGetCommitsInRange_DivergedBranches(t *testing.T) {
 	require.Equal(t, prCommit1, commits[1])
 }
 
-func TestGetCommitMessage(t *testing.T) {
-	// Create a temporary git repository
+func TestValidateCommits_MultiLineMessage(t *testing.T) {
 	tempDir := t.TempDir()
 	repo, err := git.PlainInit(tempDir, false)
-	if err != nil {
-		t.Fatalf("Failed to create temp repo: %v", err)
-	}
+	require.NoError(t, err)
 
 	worktree, err := repo.Worktree()
 	require.NoError(t, err)
 
-	// Create a commit with multi-line message
 	testFile := filepath.Join(tempDir, "test.txt")
 	err = os.WriteFile(testFile, []byte("test"), 0644)
 	require.NoError(t, err)
 	_, err = worktree.Add("test.txt")
 	require.NoError(t, err)
 
-	multilineMessage := `feat: add new feature
-
-This is a detailed description
-of the feature.
-
-It spans multiple lines.`
-
-	hash, err := worktree.Commit(multilineMessage, &git.CommitOptions{
-		Author: &object.Signature{Name: "Test", Email: "test@example.com"},
+	multilineHash, err := worktree.Commit("feat: add new feature\n\nDetailed description\nspanning multiple lines.", &git.CommitOptions{
+		Author: &object.Signature{Name: "developer", Email: "developer@redhat.com"},
 	})
 	require.NoError(t, err)
 
-	tests := []struct {
-		name        string
-		sha         string
-		wantSubject string
-		wantMessage string
-		wantErr     bool
-	}{
-		{
-			name:        "valid: multi-line message",
-			sha:         hash.String(),
-			wantSubject: "feat: add new feature",
-			wantMessage: multilineMessage,
-			wantErr:     false,
+	validator := pkgcommitlint.NewValidator()
+
+	failedCommits, passedCount := validateCommits(
+		validator, repo, []string{multilineHash.String()},
+	)
+
+	require.Empty(t, failedCommits, "multi-line commit with valid header should pass")
+	require.Equal(t, 1, passedCount)
+}
+
+func TestValidateCommits_WhitelistedAuthor(t *testing.T) {
+	tempDir := t.TempDir()
+	repo, err := git.PlainInit(tempDir, false)
+	require.NoError(t, err)
+
+	worktree, err := repo.Worktree()
+	require.NoError(t, err)
+
+	// Create a commit from a whitelisted bot with a non-conforming message
+	testFile := filepath.Join(tempDir, "test.txt")
+	err = os.WriteFile(testFile, []byte("test"), 0644)
+	require.NoError(t, err)
+	_, err = worktree.Add("test.txt")
+	require.NoError(t, err)
+
+	botHash, err := worktree.Commit("Red Hat Konflux kflux-prd-rh02 update hyperfleet-api", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "red-hat-konflux-kflux-prd-rh02",
+			Email: "konflux@no-reply.konflux-ci.dev",
 		},
-		{
-			name:    "invalid: non-existent SHA",
-			sha:     "0000000000000000000000000000000000000000",
-			wantErr: true,
+	})
+	require.NoError(t, err)
+
+	// Create a commit from a regular user with a valid message
+	testFile2 := filepath.Join(tempDir, "test2.txt")
+	err = os.WriteFile(testFile2, []byte("test2"), 0644)
+	require.NoError(t, err)
+	_, err = worktree.Add("test2.txt")
+	require.NoError(t, err)
+
+	userHash, err := worktree.Commit("feat: add new feature", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "developer",
+			Email: "developer@redhat.com",
 		},
-	}
+	})
+	require.NoError(t, err)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			message, subject, err := getCommitMessage(repo, tt.sha)
+	validator := pkgcommitlint.NewValidator()
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("getCommitMessage() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
+	// Bot commit should be skipped, user commit should pass
+	failedCommits, passedCount := validateCommits(
+		validator, repo, []string{botHash.String(), userHash.String()},
+	)
 
-			if !tt.wantErr {
-				if subject != tt.wantSubject {
-					t.Errorf("getCommitMessage() subject = %v, want %v", subject, tt.wantSubject)
-				}
-				if message != tt.wantMessage {
-					t.Errorf("getCommitMessage() message = %v, want %v", message, tt.wantMessage)
-				}
-			}
-		})
-	}
+	require.Empty(t, failedCommits, "no commits should fail")
+	require.Equal(t, 2, passedCount, "both commits should count as passed (1 skipped + 1 validated)")
+}
+
+func TestValidateCommits_WhitelistedAuthorInvalidMessage(t *testing.T) {
+	tempDir := t.TempDir()
+	repo, err := git.PlainInit(tempDir, false)
+	require.NoError(t, err)
+
+	worktree, err := repo.Worktree()
+	require.NoError(t, err)
+
+	// Non-whitelisted author with a non-conforming message should fail
+	testFile := filepath.Join(tempDir, "test.txt")
+	err = os.WriteFile(testFile, []byte("test"), 0644)
+	require.NoError(t, err)
+	_, err = worktree.Add("test.txt")
+	require.NoError(t, err)
+
+	badHash, err := worktree.Commit("this does not conform to the standard", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "developer",
+			Email: "developer@redhat.com",
+		},
+	})
+	require.NoError(t, err)
+
+	validator := pkgcommitlint.NewValidator()
+
+	failedCommits, passedCount := validateCommits(
+		validator, repo, []string{badHash.String()},
+	)
+
+	require.Len(t, failedCommits, 1, "non-whitelisted author with bad message should fail")
+	require.Equal(t, 0, passedCount)
 }
 
 func TestShortSHA(t *testing.T) {

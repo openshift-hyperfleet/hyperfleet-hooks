@@ -7,7 +7,7 @@ import (
 	gogithub "github.com/google/go-github/v84/github"
 )
 
-func TestGetPRTitle_InvalidRepoFormat(t *testing.T) {
+func TestGetPRInfo_InvalidRepoFormat(t *testing.T) {
 	client := &Client{client: gogithub.NewClient(nil)}
 	ctx := context.Background()
 
@@ -22,7 +22,7 @@ func TestGetPRTitle_InvalidRepoFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := client.GetPRTitle(ctx, tt.repo, 1)
+			_, err := client.GetPRInfo(ctx, tt.repo, 1)
 			if err == nil {
 				t.Error("expected error for invalid repo format")
 			}
@@ -30,7 +30,7 @@ func TestGetPRTitle_InvalidRepoFormat(t *testing.T) {
 	}
 }
 
-func TestGetPRTitleFromEnv_MissingEnvVars(t *testing.T) {
+func TestGetPRInfoFromEnv_MissingEnvVars(t *testing.T) {
 	client := &Client{client: gogithub.NewClient(nil)}
 	ctx := context.Background()
 
@@ -66,7 +66,7 @@ func TestGetPRTitleFromEnv_MissingEnvVars(t *testing.T) {
 				t.Setenv(k, v)
 			}
 
-			_, _, err := client.GetPRTitleFromEnv(ctx)
+			_, _, err := client.GetPRInfoFromEnv(ctx)
 			if err == nil {
 				t.Error("expected error for missing env vars")
 			}
@@ -74,7 +74,7 @@ func TestGetPRTitleFromEnv_MissingEnvVars(t *testing.T) {
 	}
 }
 
-func TestGetPRTitleFromEnv_InvalidPullNumber(t *testing.T) {
+func TestGetPRInfoFromEnv_InvalidPullNumber(t *testing.T) {
 	client := &Client{client: gogithub.NewClient(nil)}
 	ctx := context.Background()
 
@@ -82,7 +82,7 @@ func TestGetPRTitleFromEnv_InvalidPullNumber(t *testing.T) {
 	t.Setenv("REPO_NAME", "repo")
 	t.Setenv("PULL_NUMBER", "not-a-number")
 
-	_, _, err := client.GetPRTitleFromEnv(ctx)
+	_, _, err := client.GetPRInfoFromEnv(ctx)
 	if err == nil {
 		t.Error("expected error for invalid PULL_NUMBER")
 	}
