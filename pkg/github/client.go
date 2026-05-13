@@ -32,12 +32,18 @@ func NewClient() *Client {
 	}
 }
 
-// GetPRTitle fetches the title of a pull request
+// PRInfo holds a PR's title and author login
+type PRInfo struct {
+	Title       string
+	AuthorLogin string
+}
+
+// GetPRInfo fetches the title and author of a pull request
 // repo format: "owner/name" or "org/repo"
-func (c *Client) GetPRTitle(ctx context.Context, repo string, prNumber int) (string, error) {
+func (c *Client) GetPRInfo(ctx context.Context, repo string, prNumber int) (*PRInfo, error) {
 	parts := strings.Split(repo, "/")
 	if len(parts) != 2 {
-		return "", fmt.Errorf("invalid repo format: %s (expected owner/repo)", repo)
+		return nil, fmt.Errorf("invalid repo format: %s (expected owner/repo)", repo)
 	}
 
 	owner := parts[0]
@@ -45,20 +51,24 @@ func (c *Client) GetPRTitle(ctx context.Context, repo string, prNumber int) (str
 
 	pr, _, err := c.client.PullRequests.Get(ctx, owner, repoName, prNumber)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch PR #%d: %w", prNumber, err)
+		return nil, fmt.Errorf("failed to fetch PR #%d: %w", prNumber, err)
 	}
 
 	if pr.Title == nil {
-		return "", fmt.Errorf("PR #%d has no title", prNumber)
+		return nil, fmt.Errorf("PR #%d has no title", prNumber)
 	}
 
-	return *pr.Title, nil
+	return &PRInfo{
+		Title:       *pr.Title,
+		AuthorLogin: pr.GetUser().GetLogin(),
+	}, nil
 }
 
-// PRCommit holds a commit SHA and its message
+// PRCommit holds a commit SHA, message, and author email
 type PRCommit struct {
-	SHA     string
-	Message string
+	SHA         string
+	Message     string
+	AuthorEmail string
 }
 
 // GetPRCommits fetches all commits for a pull request
@@ -74,8 +84,9 @@ func (c *Client) GetPRCommits(ctx context.Context, owner, repo string, prNumber 
 
 		for _, c := range commits {
 			allCommits = append(allCommits, PRCommit{
-				SHA:     c.GetSHA(),
-				Message: c.GetCommit().GetMessage(),
+				SHA:         c.GetSHA(),
+				Message:     c.GetCommit().GetMessage(),
+				AuthorEmail: c.GetCommit().GetAuthor().GetEmail(),
 			})
 		}
 
@@ -107,28 +118,27 @@ func (c *Client) GetPRCommitsFromEnv(ctx context.Context) ([]PRCommit, error) {
 	return c.GetPRCommits(ctx, owner, repoName, prNumber)
 }
 
-// GetPRTitleFromEnv fetches PR title using environment variables
+// GetPRInfoFromEnv fetches PR title and author using environment variables
 // Uses REPO_OWNER, REPO_NAME, PULL_NUMBER from Prow
-// Returns the PR title and the PR number string
-func (c *Client) GetPRTitleFromEnv(ctx context.Context) (title string, prNumberStr string, err error) {
+func (c *Client) GetPRInfoFromEnv(ctx context.Context) (info *PRInfo, prNumberStr string, err error) {
 	owner := os.Getenv("REPO_OWNER")
 	repoName := os.Getenv("REPO_NAME")
 	prNumberStr = os.Getenv("PULL_NUMBER")
 
 	if owner == "" || repoName == "" || prNumberStr == "" {
-		return "", "", fmt.Errorf("missing required environment variables (REPO_OWNER, REPO_NAME, PULL_NUMBER)")
+		return nil, "", fmt.Errorf("missing required environment variables (REPO_OWNER, REPO_NAME, PULL_NUMBER)")
 	}
 
 	var prNumber int
 	_, err = fmt.Sscanf(prNumberStr, "%d", &prNumber)
 	if err != nil {
-		return "", "", fmt.Errorf("invalid PULL_NUMBER %q: %w", prNumberStr, err)
+		return nil, "", fmt.Errorf("invalid PULL_NUMBER %q: %w", prNumberStr, err)
 	}
 
 	repo := fmt.Sprintf("%s/%s", owner, repoName)
-	title, err = c.GetPRTitle(ctx, repo, prNumber)
+	info, err = c.GetPRInfo(ctx, repo, prNumber)
 	if err != nil {
-		return "", "", fmt.Errorf("fetching PR title from env: %w", err)
+		return nil, "", fmt.Errorf("fetching PR info from env: %w", err)
 	}
-	return title, prNumberStr, nil
+	return info, prNumberStr, nil
 }

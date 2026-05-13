@@ -262,3 +262,47 @@ func TestValidator_ValidatePRTitle(t *testing.T) {
 		})
 	}
 }
+
+func TestValidator_IsWhitelistedAuthor(t *testing.T) {
+	validator := NewValidator()
+
+	tests := []struct {
+		name  string
+		email string
+		want  bool
+	}{
+		{
+			name:  "konflux bot is whitelisted",
+			email: "konflux@no-reply.konflux-ci.dev",
+			want:  true,
+		},
+		{
+			name:  "konflux bot case insensitive",
+			email: "Konflux@No-Reply.Konflux-CI.Dev",
+			want:  true,
+		},
+		{
+			name:  "konflux bot github login is whitelisted",
+			email: "red-hat-konflux-kflux-prd-rh02[bot]",
+			want:  true,
+		},
+		{
+			name:  "regular user is not whitelisted",
+			email: "developer@redhat.com",
+			want:  false,
+		},
+		{
+			name:  "empty email is not whitelisted",
+			email: "",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validator.IsWhitelistedAuthor(tt.email); got != tt.want {
+				t.Errorf("IsWhitelistedAuthor(%q) = %v, want %v", tt.email, got, tt.want)
+			}
+		})
+	}
+}
