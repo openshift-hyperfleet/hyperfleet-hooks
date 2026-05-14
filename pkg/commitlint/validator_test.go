@@ -76,6 +76,38 @@ func TestValidator_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "valid: feat with OCM prefix",
+			message: "OCM-42 - feat: add feature",
+			wantErr: false,
+		},
+		{
+			name:    "valid: fix with MGDAPI prefix",
+			message: "MGDAPI-100 - fix: resolve timeout",
+			wantErr: false,
+		},
+		{
+			name:    "valid: docs with RHCLOUD prefix",
+			message: "RHCLOUD-1 - docs: update readme",
+			wantErr: false,
+		},
+		{
+			name:    "valid: chore with TFMRHCLOUD prefix",
+			message: "TFMRHCLOUD-55 - chore: cleanup",
+			wantErr: false,
+		},
+		{
+			name:    "invalid: lowercase jira prefix",
+			message: "ocm-42 - feat: add feature",
+			wantErr: true,
+			errRule: "header-format",
+		},
+		{
+			name:    "invalid: digits-first jira prefix",
+			message: "123OCM-42 - feat: add feature",
+			wantErr: true,
+			errRule: "header-format",
+		},
+		{
 			name:    "invalid: with scope (not supported)",
 			message: "feat(api): add cluster endpoint",
 			wantErr: true,
@@ -194,6 +226,19 @@ func TestValidator_JIRAPrefixExcludedFromLength(t *testing.T) {
 	if result.Valid {
 		t.Errorf("Message with 73 chars (excluding JIRA) should be invalid")
 	}
+
+	// Non-HYPERFLEET prefix: same length logic applies
+	msgOCM := "OCM-999 - feat: " + strings.Repeat("a", 66)
+	result = validator.Validate(msgOCM)
+	if !result.Valid {
+		t.Errorf("Message with 72 chars (excluding non-HYPERFLEET JIRA) should be valid, got errors: %v", result.Errors)
+	}
+
+	msgOCMTooLong := msgOCM + "a"
+	result = validator.Validate(msgOCMTooLong)
+	if result.Valid {
+		t.Errorf("Message with 73 chars (excluding non-HYPERFLEET JIRA) should be invalid")
+	}
 }
 
 func TestValidator_ValidatePRTitle(t *testing.T) {
@@ -213,6 +258,16 @@ func TestValidator_ValidatePRTitle(t *testing.T) {
 		{
 			name:    "valid: PR title with JIRA and long subject",
 			title:   "HYPERFLEET-456 - fix: resolve memory leak in controller",
+			wantErr: false,
+		},
+		{
+			name:    "valid: PR title with OCM prefix",
+			title:   "OCM-42 - feat: add cluster feature",
+			wantErr: false,
+		},
+		{
+			name:    "valid: PR title with MGDAPI prefix",
+			title:   "MGDAPI-100 - fix: resolve timeout",
 			wantErr: false,
 		},
 		{
