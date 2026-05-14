@@ -204,6 +204,12 @@ func validatePRFromAPI(ctx context.Context, validator *commitlint.Validator) err
 		subject := strings.SplitN(strings.TrimSpace(pc.Message), "\n", 2)[0]
 		fmt.Fprintf(os.Stderr, "Checking: %s - %s\n", shortSHA(pc.SHA), subject)
 
+		if validator.IsWhitelistedAuthor(pc.AuthorEmail) {
+			fmt.Fprintf(os.Stderr, "  ⏭️  SKIP (whitelisted author: %s)\n", pc.AuthorEmail)
+			passedCount++
+			continue
+		}
+
 		result := validator.Validate(strings.TrimSpace(pc.Message))
 		if result.Valid {
 			fmt.Fprintln(os.Stderr, "  ✅ PASS")
@@ -230,14 +236,25 @@ func validateCommits(
 	validator *commitlint.Validator, repo *git.Repository, commits []string,
 ) (failedCommits []string, passedCount int) {
 	for _, sha := range commits {
-		msg, subject, err := getCommitMessage(repo, sha)
+		hash := plumbing.NewHash(sha)
+		commit, err := repo.CommitObject(hash)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ Failed to get message for %s: %v\n", shortSHA(sha), err)
+			fmt.Fprintf(os.Stderr, "❌ Failed to get commit for %s: %v\n", shortSHA(sha), err)
 			failedCommits = append(failedCommits, shortSHA(sha))
 			continue
 		}
 
+		msg := strings.TrimSpace(commit.Message)
+		lines := strings.SplitN(msg, "\n", 2)
+		subject := strings.TrimSpace(lines[0])
+
 		fmt.Fprintf(os.Stderr, "Checking: %s - %s\n", shortSHA(sha), subject)
+
+		if validator.IsWhitelistedAuthor(commit.Author.Email) {
+			fmt.Fprintf(os.Stderr, "  ⏭️  SKIP (whitelisted author: %s)\n", commit.Author.Email)
+			passedCount++
+			continue
+		}
 
 		result := validator.Validate(msg)
 		if result.Valid {
@@ -268,14 +285,20 @@ func validatePRTitle(ctx context.Context, validator *commitlint.Validator) (titl
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	title, prNumberStr, err := client.GetPRTitleFromEnv(ctx)
+	prInfo, prNumberStr, err := client.GetPRInfoFromEnv(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "⚠️  Could not fetch PR title: %v\n", err)
 		fmt.Fprintln(os.Stderr, "   Skipping PR title validation")
 		return "", false
 	}
 
+	title = prInfo.Title
 	fmt.Fprintf(os.Stderr, "PR #%s: %s\n", prNumberStr, title)
+
+	if validator.IsWhitelistedAuthor(prInfo.AuthorLogin) {
+		fmt.Fprintf(os.Stderr, "  ⏭️  SKIP (whitelisted author: %s)\n", prInfo.AuthorLogin)
+		return title, false
+	}
 
 	result := validator.ValidatePRTitle(title)
 	if result.Valid {
@@ -316,7 +339,7 @@ func printSummary(failedCommits []string, prTitleFailed bool, commits []string, 
 	fmt.Fprintln(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "📖 HyperFleet Commit Standard:")
-	fmt.Fprintln(os.Stderr, "   Format: [HYPERFLEET-XXX - ]<type>: <subject>")
+	fmt.Fprintln(os.Stderr, "   Format: [<JIRA_PROJECT_ID>-<TICKET_NUM> - ]<type>: <subject>")
 	fmt.Fprintln(os.Stderr, "   Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert")
 	fmt.Fprintln(os.Stderr, "   Max length: 72 chars (excluding JIRA prefix)")
 	fmt.Fprintln(os.Stderr, "")
@@ -444,21 +467,3 @@ func getCommitsInRange(repo *git.Repository, baseSHA, headSHA string) ([]string,
 	return strings.Split(trimmed, "\n"), nil
 }
 
-// getCommitMessage returns the full message and subject of a commit
-func getCommitMessage(repo *git.Repository, sha string) (message, subject string, err error) {
-	// Get commit object
-	hash := plumbing.NewHash(sha)
-	commit, err := repo.CommitObject(hash)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get commit: %w", err)
-	}
-
-	// Full message
-	message = strings.TrimSpace(commit.Message)
-
-	// Subject is the first line of the message
-	lines := strings.SplitN(message, "\n", 2)
-	subject = strings.TrimSpace(lines[0])
-
-	return message, subject, nil
-}
