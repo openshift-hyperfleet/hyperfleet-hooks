@@ -339,7 +339,7 @@ func printSummary(failedCommits []string, prTitleFailed bool, commits []string, 
 	fmt.Fprintln(os.Stderr, "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "📖 HyperFleet Commit Standard:")
-	fmt.Fprintln(os.Stderr, "   Format: [HYPERFLEET-XXX - ]<type>: <subject>")
+	fmt.Fprintln(os.Stderr, "   Format: [<JIRA_PROJECT_ID>-<TICKET_NUM> - ]<type>: <subject>")
 	fmt.Fprintln(os.Stderr, "   Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert")
 	fmt.Fprintln(os.Stderr, "   Max length: 72 chars (excluding JIRA prefix)")
 	fmt.Fprintln(os.Stderr, "")

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Validator validates commit messages against HyperFleet standards
+// Validator validates commit messages against conventional commit standards
 type Validator struct {
 	commitPattern      *regexp.Regexp
 	jiraPattern        *regexp.Regexp
@@ -49,8 +49,8 @@ func NewValidator() *Validator {
 			"revert":   true,
 		},
 		maxSubjectLength: 72,
-		commitPattern:    regexp.MustCompile(`^(?:HYPERFLEET-\d+\s*-\s*)?([a-z]+):\s+(.*)$`),
-		jiraPattern:      regexp.MustCompile(`^HYPERFLEET-\d+\s*-\s*`),
+		commitPattern:    regexp.MustCompile(`^(?:[A-Z][A-Z0-9_]+-\d+\s*-\s*)?([a-z]+):\s+(.*)$`),
+		jiraPattern:      regexp.MustCompile(`^[A-Z][A-Z0-9_]+-\d+\s*-\s*`),
 		whitelistedAuthors: map[string]bool{
 			"konflux@no-reply.konflux-ci.dev":          true,
 			"red-hat-konflux-kflux-prd-rh02[bot]":      true,
@@ -102,7 +102,7 @@ func (v *Validator) Validate(message string) *ValidationResult {
 		result.Valid = false
 		result.Errors = append(result.Errors, &ValidationError{
 			Rule:    "header-format",
-			Message: "header must match format: [HYPERFLEET-XXX - ]<type>: <subject>",
+			Message: "header must match format: [<JIRA_PROJECT_ID>-<TICKET_NUM> - ]<type>: <subject>",
 		})
 		return result
 	}
@@ -148,7 +148,7 @@ func (v *Validator) ValidatePRTitle(title string) *ValidationResult {
 		result.Valid = false
 		result.Errors = append(result.Errors, &ValidationError{
 			Rule:    "pr-title-requires-jira",
-			Message: "PR title must include JIRA ticket (format: HYPERFLEET-XXX - <type>: <subject>)",
+			Message: "PR title must include JIRA ticket (format: <JIRA_PROJECT_ID>-<TICKET_NUM> - <type>: <subject>)",
 		})
 	}
 

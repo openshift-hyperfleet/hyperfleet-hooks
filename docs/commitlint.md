@@ -69,12 +69,13 @@ echo "feat: add new feature" | hyperfleet-hooks commitlint
 
 ### PR Title Requirements
 
-PR titles must include JIRA ticket: `HYPERFLEET-XXX - <type>: <subject>`
+PR titles must include JIRA ticket: `<JIRA_PROJECT_ID>-<TICKET_NUM> - <type>: <subject>`
 
 *Why?* For squash merges, PR title becomes the final commit message with traceability to JIRA.
 
 Examples:
 - ✅ `HYPERFLEET-123 - feat: add cluster validation`
+- ✅ `SENTINEL-42 - fix: resolve timeout`
 - ❌ `feat: add cluster validation` (missing JIRA)
 
 ### Configuration
@@ -203,7 +204,7 @@ hyperfleet-hooks version
 ### Format
 
 ```text
-[HYPERFLEET-XXX - ]<type>: <subject>
+[<JIRA_PROJECT_ID>-<TICKET_NUM> - ]<type>: <subject>
 
 [body]
 
@@ -226,7 +227,7 @@ hyperfleet-hooks version
 
 ### Rules
 
-- **JIRA ID**: Optional, format `HYPERFLEET-XXX - `
+- **JIRA ID**: Optional, format `<JIRA_PROJECT_ID>-<TICKET_NUM> - `
 - **Type**: Required, one of the valid types (see above)
 - **Subject**: Required, imperative mood, no period
 - **Header Length**: `<type>: <subject>` must not exceed 72 characters (excluding JIRA prefix)
@@ -239,7 +240,7 @@ hyperfleet-hooks version
 ```text
 ✅ feat: add user authentication
 ✅ HYPERFLEET-123 - fix: resolve memory leak
-✅ docs: update API documentation
+✅ SENTINEL-42 - docs: update API documentation
 ✅ refactor: simplify error handling
 ```
 
@@ -257,7 +258,7 @@ Common errors:
 - `header must match format` → Add type: `feat:`, `fix:`, etc.
 - `type must be one of` → Use valid type (feat, fix, docs, etc.)
 - `header must not exceed 72 characters` → `<type>: <subject>` must be ≤ 72 chars (excluding JIRA prefix)
-- `pr-title-requires-jira` → PR titles must start with `HYPERFLEET-XXX - `
+- `pr-title-requires-jira` → PR titles must start with `<JIRA_PROJECT_ID>-<TICKET_NUM> - `
 
 Hook issues:
 - Reinstall: `pre-commit install --hook-type commit-msg`
