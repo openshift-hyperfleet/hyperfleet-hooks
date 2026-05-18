@@ -342,6 +342,21 @@ func TestValidator_IsWhitelistedAuthor(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "github bot noreply email is whitelisted",
+			email: "190377777+red-hat-konflux-kflux-prd-rh02[bot]@users.noreply.github.com",
+			want:  true,
+		},
+		{
+			name:  "different numeric prefix still whitelisted",
+			email: "999999+red-hat-konflux-kflux-prd-rh02[bot]@users.noreply.github.com",
+			want:  true,
+		},
+		{
+			name:  "non-bot noreply email is not whitelisted",
+			email: "12345+someuser@users.noreply.github.com",
+			want:  false,
+		},
+		{
 			name:  "regular user is not whitelisted",
 			email: "developer@redhat.com",
 			want:  false,
@@ -359,5 +374,21 @@ func TestValidator_IsWhitelistedAuthor(t *testing.T) {
 				t.Errorf("IsWhitelistedAuthor(%q) = %v, want %v", tt.email, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidator_IsWhitelistedAuthor_Variadic(t *testing.T) {
+	validator := NewValidator()
+
+	if !validator.IsWhitelistedAuthor("unknown@example.com", "red-hat-konflux-kflux-prd-rh02[bot]") {
+		t.Error("expected whitelisted when name matches exact whitelist entry")
+	}
+
+	if !validator.IsWhitelistedAuthor("190377777+some-other-bot[bot]@users.noreply.github.com", "irrelevant") {
+		t.Error("expected whitelisted when email matches bot noreply pattern")
+	}
+
+	if validator.IsWhitelistedAuthor("user@example.com", "some-user") {
+		t.Error("expected not whitelisted when neither identifier matches")
 	}
 }

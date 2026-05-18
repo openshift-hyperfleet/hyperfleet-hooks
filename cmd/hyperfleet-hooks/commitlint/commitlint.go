@@ -204,7 +204,7 @@ func validatePRFromAPI(ctx context.Context, validator *commitlint.Validator) err
 		subject := strings.SplitN(strings.TrimSpace(pc.Message), "\n", 2)[0]
 		fmt.Fprintf(os.Stderr, "Checking: %s - %s\n", shortSHA(pc.SHA), subject)
 
-		if validator.IsWhitelistedAuthor(pc.AuthorEmail) {
+		if validator.IsWhitelistedAuthor(pc.AuthorEmail, pc.AuthorName) {
 			fmt.Fprintf(os.Stderr, "  ⏭️  SKIP (whitelisted author: %s)\n", pc.AuthorEmail)
 			passedCount++
 			continue
@@ -250,7 +250,7 @@ func validateCommits(
 
 		fmt.Fprintf(os.Stderr, "Checking: %s - %s\n", shortSHA(sha), subject)
 
-		if validator.IsWhitelistedAuthor(commit.Author.Email) {
+		if validator.IsWhitelistedAuthor(commit.Author.Email, commit.Author.Name) {
 			fmt.Fprintf(os.Stderr, "  ⏭️  SKIP (whitelisted author: %s)\n", commit.Author.Email)
 			passedCount++
 			continue
