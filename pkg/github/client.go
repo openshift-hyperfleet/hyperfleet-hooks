@@ -64,11 +64,12 @@ func (c *Client) GetPRInfo(ctx context.Context, repo string, prNumber int) (*PRI
 	}, nil
 }
 
-// PRCommit holds a commit SHA, message, and author email
+// PRCommit holds a commit SHA, message, and author details
 type PRCommit struct {
 	SHA         string
 	Message     string
 	AuthorEmail string
+	AuthorName  string
 }
 
 // GetPRCommits fetches all commits for a pull request
@@ -87,6 +88,7 @@ func (c *Client) GetPRCommits(ctx context.Context, owner, repo string, prNumber 
 				SHA:         c.GetSHA(),
 				Message:     c.GetCommit().GetMessage(),
 				AuthorEmail: c.GetCommit().GetAuthor().GetEmail(),
+				AuthorName:  c.GetCommit().GetAuthor().GetName(),
 			})
 		}
 

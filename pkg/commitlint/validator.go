@@ -7,13 +7,20 @@ import (
 	"strings"
 )
 
+// authorPattern matches bot accounts by email suffix and a required substring.
+type authorPattern struct {
+	suffix   string
+	contains string
+}
+
 // Validator validates commit messages against conventional commit standards
 type Validator struct {
-	commitPattern      *regexp.Regexp
-	jiraPattern        *regexp.Regexp
-	validTypes         map[string]bool
-	maxSubjectLength   int
-	whitelistedAuthors map[string]bool
+	commitPattern       *regexp.Regexp
+	jiraPattern         *regexp.Regexp
+	validTypes          map[string]bool
+	maxSubjectLength    int
+	whitelistedAuthors  map[string]bool
+	whitelistedPatterns []authorPattern
 }
 
 // ValidationError represents a validation error
@@ -52,8 +59,11 @@ func NewValidator() *Validator {
 		commitPattern:    regexp.MustCompile(`^(?:[A-Z][A-Z0-9_]+-\d+\s*-\s*)?([a-z]+):\s+(.*)$`),
 		jiraPattern:      regexp.MustCompile(`^[A-Z][A-Z0-9_]+-\d+\s*-\s*`),
 		whitelistedAuthors: map[string]bool{
-			"konflux@no-reply.konflux-ci.dev":          true,
-			"red-hat-konflux-kflux-prd-rh02[bot]":      true,
+			"konflux@no-reply.konflux-ci.dev":     true,
+			"red-hat-konflux-kflux-prd-rh02[bot]": true,
+		},
+		whitelistedPatterns: []authorPattern{
+			{suffix: "@users.noreply.github.com", contains: "[bot]"},
 		},
 	}
 }
@@ -155,9 +165,20 @@ func (v *Validator) ValidatePRTitle(title string) *ValidationResult {
 	return result
 }
 
-// IsWhitelistedAuthor returns true if the given identifier (email or GitHub login) belongs to a whitelisted bot account.
-func (v *Validator) IsWhitelistedAuthor(identifier string) bool {
-	return v.whitelistedAuthors[strings.ToLower(identifier)]
+// IsWhitelistedAuthor returns true if any of the given identifiers (email, name, or GitHub login) belongs to a whitelisted bot account.
+func (v *Validator) IsWhitelistedAuthor(identifiers ...string) bool {
+	for _, id := range identifiers {
+		lower := strings.ToLower(id)
+		if v.whitelistedAuthors[lower] {
+			return true
+		}
+		for _, p := range v.whitelistedPatterns {
+			if strings.HasSuffix(lower, p.suffix) && strings.Contains(lower, p.contains) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (v *Validator) getValidTypesString() string {
