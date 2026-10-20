@@ -95,12 +95,24 @@ See [commitlint documentation](docs/commitlint.md) for Prow CI setup and [go-too
 
 These instructions are only needed if you are contributing to this repository.
 
+### Prerequisites
+
+- Go 1.26+
+- [pre-commit](https://pre-commit.com/#install)
+
 ```bash
+make install-hooks  # Install pre-commit hooks (secret scanning, commitlint, linting, file hygiene)
 make build    # Build binary
 make test     # Run tests
 make lint     # Run linters (golangci-lint, pinned in tools/go.mod)
 make image    # Build container image
 ```
+
+This repository consumes its own published hooks: `.pre-commit-config.yaml`
+references `openshift-hyperfleet/hyperfleet-hooks` at the latest release tag, so
+`pre-commit run --all-files` validates the codebase with the same secret
+scanning, commit message and file hygiene checks that consuming repositories
+get.
 
 ### Releasing a New Version
 
