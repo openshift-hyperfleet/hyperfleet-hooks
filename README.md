@@ -109,10 +109,10 @@ make image    # Build container image
 ```
 
 This repository consumes its own published hooks: `.pre-commit-config.yaml`
-references `openshift-hyperfleet/hyperfleet-hooks` at the latest release tag, so
-`pre-commit run --all-files` validates the codebase with the same secret
-scanning, commit message and file hygiene checks that consuming repositories
-get.
+references `openshift-hyperfleet/hyperfleet-hooks` at release `v0.3.0`.
+`pre-commit run --all-files` also runs the separately configured LeakTK secret
+scanning and file hygiene hooks. The fleet-wide rev alignment is tracked in
+[HYPERFLEET-1812](https://redhat.atlassian.net/browse/HYPERFLEET-1812).
 
 ### Releasing a New Version
 
