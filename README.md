@@ -97,7 +97,7 @@ These instructions are only needed if you are contributing to this repository.
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.26.0 (the pinned golangci-lint v2.7.0 does not support Go 1.27; on newer toolchains, prefix commands with `GOTOOLCHAIN=go1.26.0`)
 - [pre-commit](https://pre-commit.com/#install)
 
 ```bash
