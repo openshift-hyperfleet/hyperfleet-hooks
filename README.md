@@ -91,6 +91,15 @@ pre-commit install --hook-type pre-commit
 
 See [commitlint documentation](docs/commitlint.md) for Prow CI setup and [go-tooling documentation](docs/go-tooling.md) for tool configuration.
 
+### LeakTK is a local gate only
+
+The separately configured `leaktk.git.pre-commit` hook scans staged changes and
+ignores the filenames passed by pre-commit. A successful `pre-commit run --all-files`
+on a clean CI checkout therefore does not prove that repository content was scanned
+for secrets. No shared LeakTK Prow scan is being added; GitHub secret scanning and
+push protection remain separate controls with their own pattern coverage and bypass
+limitations (see the [decision](https://redhat.atlassian.net/browse/HYPERFLEET-1844)).
+
 ## Development
 
 These instructions are only needed if you are contributing to this repository.
@@ -110,8 +119,9 @@ make image    # Build container image
 
 This repository consumes its own published hooks: `.pre-commit-config.yaml`
 references `openshift-hyperfleet/hyperfleet-hooks` at release `v0.3.0`.
-`pre-commit run --all-files` also runs the separately configured LeakTK secret
-scanning and file hygiene hooks. The fleet-wide rev alignment is tracked in
+`pre-commit run --all-files` also invokes the separately configured LeakTK hook
+(staged changes only, as noted above) and file hygiene hooks. The fleet-wide rev
+alignment is tracked in
 [HYPERFLEET-1812](https://redhat.atlassian.net/browse/HYPERFLEET-1812).
 
 ### Releasing a New Version
