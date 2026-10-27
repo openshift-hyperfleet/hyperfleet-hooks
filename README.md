@@ -1,5 +1,7 @@
 # HyperFleet Hooks
 
+Temporary presubmit verification for HYPERFLEET-1803. Do not merge this change.
+
 Shared validation tools for all HyperFleet projects. This repository is not meant to be cloned or built manually — it is consumed automatically by the [pre-commit](https://pre-commit.com/) framework and by Prow CI via a container image.
 
 ## How It Works
