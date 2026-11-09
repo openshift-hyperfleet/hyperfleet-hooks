@@ -342,6 +342,11 @@ func TestValidator_IsWhitelistedAuthor(t *testing.T) {
 			want:  true,
 		},
 		{
+			name:  "renovate bot github login is whitelisted",
+			email: "renovate[bot]",
+			want:  true,
+		},
+		{
 			name:  "github bot noreply email is whitelisted",
 			email: "190377777+red-hat-konflux-kflux-prd-rh02[bot]@users.noreply.github.com",
 			want:  true,

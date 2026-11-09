@@ -61,6 +61,7 @@ func NewValidator() *Validator {
 		whitelistedAuthors: map[string]bool{
 			"konflux@no-reply.konflux-ci.dev":     true,
 			"red-hat-konflux-kflux-prd-rh02[bot]": true,
+			"renovate[bot]":                       true,
 		},
 		whitelistedPatterns: []authorPattern{
 			{suffix: "@users.noreply.github.com", contains: "[bot]"},
