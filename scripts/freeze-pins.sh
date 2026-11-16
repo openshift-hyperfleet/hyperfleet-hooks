@@ -99,7 +99,7 @@ awk -v sq="'" "$AWK_QUOTES"'
             printf "BAD\t%s\t%s\n", repo, $0
         }
     }
-' "$CONFIG" >"$pins"
+' "$CONFIG" >"$pins" || { echo "ERROR: could not read ${CONFIG}" >&2; exit 2; }
 
 # Print the commit the tag peels to. Fetches the tag ref and its peeled ref in
 # one request, and only falls back to the unpeeled ref when that successful
@@ -120,6 +120,7 @@ resolve_commit() {
 drift=0
 unresolved=0
 unparsable=0
+checked=0
 
 while IFS=$'\t' read -r kind repo rest; do
     case "$kind" in
@@ -148,6 +149,7 @@ while IFS=$'\t' read -r kind repo rest; do
                 continue
             fi
             [ "$commit" = "$sha" ] || drift=1
+            checked=$((checked + 1))
             printf '%s\t%s\t%s\t%s\n' "$repo" "$tag" "$sha" "$commit" >>"$resolved"
             ;;
     esac
@@ -163,6 +165,10 @@ if [ "$drift" -eq 0 ]; then
         echo "WARN: ${CONFIG}: no drift among the pins that could be read, but some could not be verified" >&2
         exit 2
     fi
+    if [ "$checked" -eq 0 ]; then
+        echo "${CONFIG}: no frozen revisions to verify"
+        exit 0
+    fi
     [ "$MODE" = "check" ] && echo "${CONFIG}: all pins point at commits"
     [ "$MODE" = "write" ] && echo "${CONFIG}: all pins point at commits, nothing to do"
     exit 0
@@ -175,7 +181,7 @@ done <"$resolved"
 
 if [ "$MODE" = "check" ]; then
     while IFS=$'\t' read -r repo tag sha commit; do
-        echo "${CONFIG}: ${repo} ${tag} is pinned to ${sha} (tag object), commit is ${commit}"
+        echo "${CONFIG}: ${repo} ${tag} is pinned to ${sha}, commit is ${commit}"
     done <"$changes"
     echo "ERROR: repin with 'pre-commit autoupdate --freeze && scripts/freeze-pins.sh'" >&2
     [ "$unresolved" -eq 0 ] || exit 2
