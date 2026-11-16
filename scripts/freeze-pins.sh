@@ -107,7 +107,7 @@ awk -v sq="'" "$AWK_QUOTES"'
 # lightweight tag.
 resolve_commit() {
     local repo="$1" tag="$2" out
-    out=$(git ls-remote --tags "$repo" "refs/tags/${tag}" "refs/tags/${tag}^{}") || return 1
+    out=$(git ls-remote --tags -- "$repo" "refs/tags/${tag}" "refs/tags/${tag}^{}") || return 1
     printf '%s\n' "$out" | awk -v base="refs/tags/${tag}" '
         $2 == base "^{}" { peeled = $1 }
         $2 == base { unpeeled = $1 }
@@ -130,6 +130,13 @@ while IFS=$'\t' read -r kind repo rest; do
         OK)
             tag="${rest%%$'\t'*}"
             sha="${rest#*$'\t'}"
+            case "$repo" in
+                -*)
+                    echo "ERROR: refusing an option-like repository at ${CONFIG}: ${repo}" >&2
+                    unparsable=1
+                    continue
+                    ;;
+            esac
             if ! commit=$(resolve_commit "$repo" "$tag"); then
                 echo "WARN: git ls-remote failed for ${repo}; leaving ${sha} untouched" >&2
                 unresolved=1
@@ -218,7 +225,10 @@ case "$verify" in
         echo "ERROR: the rewrite left non-commit pins in ${CONFIG}; nothing changed" >&2
         exit 2
         ;;
-    2) echo "WARN: some pins could not be verified, review the warnings above" >&2 ;;
+    2)
+        echo "WARN: some pins could not be verified, review the warnings above" >&2
+        unresolved=1
+        ;;
     *)
         echo "ERROR: verification of the rewrite failed (exit ${verify})" >&2
         exit 2
@@ -232,7 +242,10 @@ if command -v pre-commit >/dev/null 2>&1; then
     }
 fi
 
-mv "$workdir/config.yaml" "$CONFIG"
+if ! mv "$workdir/config.yaml" "$CONFIG"; then
+    echo "ERROR: could not replace ${CONFIG}; it was left unchanged" >&2
+    exit 2
+fi
 
 while IFS=$'\t' read -r repo tag sha commit; do
     echo "normalized ${tag} (${repo}): ${sha:0:12} -> ${commit:0:12}"

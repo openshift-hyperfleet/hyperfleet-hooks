@@ -19,7 +19,7 @@ repo=""
 refs=()
 for arg in "$@"; do
     case "$arg" in
-        ls-remote|--tags) ;;
+        ls-remote|--tags|--) ;;
         *)
             if [ -z "$repo" ]; then
                 repo="$arg"
@@ -160,6 +160,13 @@ cp "$tmp/unreachable.yaml" "$tmp/unreachable.before"
 assert_status 2 "exits 2" --file "$tmp/unreachable.yaml"
 assert_grep "git ls-remote failed" "$tmp/err" "reports the failed lookup"
 assert_same "$tmp/unreachable.yaml" "$tmp/unreachable.before" "file unchanged"
+
+echo "== an option-like repository is refused =="
+config "$tmp/injection.yaml" "--upload-pack=touch${IFS}/tmp/poc" "$TAG_OBJECT" v1.0.0
+cp "$tmp/injection.yaml" "$tmp/injection.before"
+assert_status 2 "exits 2" --file "$tmp/injection.yaml"
+assert_grep "option-like repository" "$tmp/err" "reports the rejected value"
+assert_same "$tmp/injection.yaml" "$tmp/injection.before" "file unchanged"
 
 echo "== local entries and tag-style revisions are ignored =="
 cat >"$tmp/mixed.yaml" <<EOF
