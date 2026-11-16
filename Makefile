@@ -5,7 +5,7 @@
 TOOL_MOD := tools/go.mod
 gotool = go tool -modfile=$(TOOL_MOD) $(1)
 
-.PHONY: help build build-all test test-coverage lint gofmt go-vet clean install install-hooks \
+.PHONY: help build build-all test test-coverage test-scripts lint gofmt go-vet clean install install-hooks \
        hooks-update verify-hooks validate-commits check-container-tool image image-push
 
 # ==============================================================================
@@ -76,6 +76,9 @@ test: ## Run tests
 	@echo "Running tests..."
 	go test -v -race -coverprofile=coverage.out ./...
 	@echo "✓ Tests passed"
+
+test-scripts: ## Run offline tests for scripts/ (stubbed git, no network)
+	@./scripts/tests/freeze-pins-test.sh
 
 test-coverage: test ## Run tests with coverage report
 	@echo "Generating coverage report..."
