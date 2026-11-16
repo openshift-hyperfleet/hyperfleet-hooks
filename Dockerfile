@@ -24,7 +24,8 @@ COPY --chown=1001:0 . .
 
 # CGO_ENABLED=0 produces a static binary. The default ubi-minimal runtime
 # supports both static and dynamically linked binaries.
-# For FIPS-compliant builds, use CGO_ENABLED=1 + GOEXPERIMENT=boringcrypto.
+# This tooling image is not a FIPS service. For production FIPS builds, use
+# GOFIPS140=v1.0.0 with GOEXPERIMENT=noboringcrypto (see container-image-standard.md).
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
