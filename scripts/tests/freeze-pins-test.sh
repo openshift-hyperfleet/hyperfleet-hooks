@@ -148,12 +148,32 @@ config "$tmp/quoted.yaml" https://example.test/annotated "'${TAG_OBJECT}'" v1.0.
 assert_status 0 "write exits 0" --file "$tmp/quoted.yaml"
 assert_grep "rev: '${COMMIT}'" "$tmp/quoted.yaml" "quoted pin rewritten"
 
-echo "== an unparsable frozen revision is an error, not a silent skip =="
+echo "== a rev that is not a frozen SHA is an error, not a silent skip =="
 config "$tmp/broken.yaml" https://example.test/annotated "a1111" v1.0.0
 cp "$tmp/broken.yaml" "$tmp/broken.before"
 assert_status 2 "exits 2" --file "$tmp/broken.yaml"
-assert_grep "cannot parse the frozen revision" "$tmp/err" "reports the bad revision"
+assert_grep "a remote rev must be" "$tmp/err" "reports the bad revision"
 assert_same "$tmp/broken.yaml" "$tmp/broken.before" "file unchanged"
+
+echo "== a full SHA without a frozen comment is an error =="
+cat >"$tmp/unfrozen.yaml" <<EOF
+repos:
+  - repo: https://example.test/annotated
+    rev: $TAG_OBJECT
+    hooks:
+      - id: example
+EOF
+cp "$tmp/unfrozen.yaml" "$tmp/unfrozen.before"
+assert_status 2 "check exits 2" --check --file "$tmp/unfrozen.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the missing frozen comment"
+assert_same "$tmp/unfrozen.yaml" "$tmp/unfrozen.before" "file unchanged"
+
+echo "== a tag-style revision is an error =="
+config "$tmp/tagrev.yaml" https://example.test/light "v2.0.0" v2.0.0
+cp "$tmp/tagrev.yaml" "$tmp/tagrev.before"
+assert_status 2 "check exits 2" --check --file "$tmp/tagrev.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the tag-style revision"
+assert_same "$tmp/tagrev.yaml" "$tmp/tagrev.before" "file unchanged"
 
 echo "== a failed lookup is not read as a lightweight tag =="
 config "$tmp/unreachable.yaml" https://example.test/invalid "$TAG_OBJECT" v1.0.0
@@ -179,7 +199,7 @@ assert_status_env "$tmp/noawk" 2 "exits 2" --file "$tmp/readable.yaml"
 assert_grep "could not read" "$tmp/err" "reports the unreadable config"
 assert_same "$tmp/readable.yaml" "$tmp/readable.before" "file unchanged"
 
-echo "== a config with nothing pinned says so =="
+echo "== a config with no remote entry says so =="
 cat >"$tmp/nothing.yaml" <<EOF
 repos:
   - repo: local
@@ -190,9 +210,9 @@ repos:
         language: system
 EOF
 assert_status 0 "check exits 0" --check --file "$tmp/nothing.yaml"
-assert_grep "no frozen revisions to verify" "$tmp/out" "says there was nothing to verify"
+assert_grep "no remote revisions to verify" "$tmp/out" "says there was nothing to verify"
 
-echo "== local entries and tag-style revisions are ignored =="
+echo "== a tag-style revision next to a pin is an error =="
 cat >"$tmp/mixed.yaml" <<EOF
 repos:
   - repo: https://example.test/annotated
@@ -210,9 +230,42 @@ repos:
     hooks:
       - id: example
 EOF
-assert_status 0 "write exits 0" --file "$tmp/mixed.yaml"
-assert_grep "repo: local" "$tmp/mixed.yaml" "local entry kept"
-assert_grep "rev: v2.0.0" "$tmp/mixed.yaml" "tag-style revision kept"
+cp "$tmp/mixed.yaml" "$tmp/mixed.before"
+assert_status 2 "write exits 2" --file "$tmp/mixed.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the tag-style revision"
+assert_same "$tmp/mixed.yaml" "$tmp/mixed.before" "file unchanged"
+
+echo "== a local entry alone is skipped =="
+cat >"$tmp/localonly.yaml" <<EOF
+repos:
+  - repo: local
+    hooks:
+      - id: local-hook
+        name: local hook
+        entry: "true"
+        language: system
+EOF
+assert_status 0 "write exits 0" --file "$tmp/localonly.yaml"
+assert_grep "repo: local" "$tmp/localonly.yaml" "local entry kept"
+
+echo "== a quoted repository is unquoted for the lookup and kept as written =="
+config "$tmp/qsingle.yaml" "'https://example.test/annotated'" "$TAG_OBJECT" v1.0.0
+assert_status 1 "check exits 1 on drift" --check --file "$tmp/qsingle.yaml"
+assert_status 0 "write exits 0" --file "$tmp/qsingle.yaml"
+assert_grep "repo: 'https://example.test/annotated'" "$tmp/qsingle.yaml" "single-quoted repo kept"
+assert_grep "rev: ${COMMIT}" "$tmp/qsingle.yaml" "single-quoted repo repinned"
+
+config "$tmp/qdouble.yaml" "\"https://example.test/annotated\"" "$TAG_OBJECT" v1.0.0
+assert_status 0 "write exits 0" --file "$tmp/qdouble.yaml"
+assert_grep "repo: \"https://example.test/annotated\"" "$tmp/qdouble.yaml" "double-quoted repo kept"
+assert_grep "rev: ${COMMIT}" "$tmp/qdouble.yaml" "double-quoted repo repinned"
+
+echo "== unquoting a repository does not bypass the option guard =="
+config "$tmp/qinjection.yaml" "'--upload-pack=touch /tmp/poc'" "$TAG_OBJECT" v1.0.0
+cp "$tmp/qinjection.yaml" "$tmp/qinjection.before"
+assert_status 2 "exits 2" --file "$tmp/qinjection.yaml"
+assert_grep "option-like repository" "$tmp/err" "reports the quoted rejected value"
+assert_same "$tmp/qinjection.yaml" "$tmp/qinjection.before" "file unchanged"
 
 echo
 if [ "$failures" -ne 0 ]; then
