@@ -6,7 +6,7 @@ TOOL_MOD := tools/go.mod
 gotool = go tool -modfile=$(TOOL_MOD) $(1)
 
 .PHONY: help build build-all test test-coverage lint gofmt go-vet clean install install-hooks \
-       validate-commits check-container-tool image image-push
+       hooks-update verify-hooks validate-commits check-container-tool image image-push
 
 # ==============================================================================
 # Configuration
@@ -122,6 +122,15 @@ install: build ## Install binary to /usr/local/bin
 
 install-hooks: ## Install pre-commit hooks
 	pre-commit install
+
+hooks-update: ## Update pre-commit hooks and repin frozen revisions to commits
+	@echo "Updating pre-commit hooks..."
+	pre-commit autoupdate --freeze
+	@./scripts/freeze-pins.sh
+	@echo "✓ Hooks updated"
+
+verify-hooks: ## Fail when a frozen revision is not pinned to a commit SHA
+	@./scripts/freeze-pins.sh --check
 
 # ------------------------------------------------------------------------------
 # Container
