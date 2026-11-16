@@ -260,6 +260,57 @@ assert_status 0 "write exits 0" --file "$tmp/qdouble.yaml"
 assert_grep "repo: \"https://example.test/annotated\"" "$tmp/qdouble.yaml" "double-quoted repo kept"
 assert_grep "rev: ${COMMIT}" "$tmp/qdouble.yaml" "double-quoted repo repinned"
 
+echo "== the repo key does not have to open the entry =="
+cat >"$tmp/reordered.yaml" <<EOF
+repos:
+  - hooks:
+      - id: example
+    repo: https://example.test/light
+    rev: v2.0.0
+EOF
+cp "$tmp/reordered.yaml" "$tmp/reordered.before"
+assert_status 2 "check exits 2" --check --file "$tmp/reordered.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the tag-style revision"
+assert_same "$tmp/reordered.yaml" "$tmp/reordered.before" "file unchanged"
+
+cat >"$tmp/reorderedpin.yaml" <<EOF
+repos:
+  - hooks:
+      - id: example
+    repo: https://example.test/annotated
+    rev: $TAG_OBJECT  # frozen: v1.0.0
+EOF
+assert_status 1 "check exits 1 on drift" --check --file "$tmp/reorderedpin.yaml"
+assert_status 0 "write exits 0" --file "$tmp/reorderedpin.yaml"
+assert_grep "rev: ${COMMIT}  # frozen: v1.0.0" "$tmp/reorderedpin.yaml" "repinned with the repo key last"
+
+cat >"$tmp/reorderedrev.yaml" <<EOF
+repos:
+  - hooks:
+      - id: example
+    rev: $TAG_OBJECT  # frozen: v1.0.0
+    repo: https://example.test/annotated
+EOF
+assert_status 0 "write exits 0" --file "$tmp/reorderedrev.yaml"
+assert_grep "rev: ${COMMIT}  # frozen: v1.0.0" "$tmp/reorderedrev.yaml" "repinned with the rev key first"
+assert_grep "repo: https://example.test/annotated" "$tmp/reorderedrev.yaml" "repo line kept in place"
+
+echo "== a rev with no repo in its entry is an error, not the previous repo =="
+cat >"$tmp/norepo.yaml" <<EOF
+repos:
+  - repo: https://example.test/annotated
+    rev: $TAG_OBJECT  # frozen: v1.0.0
+    hooks:
+      - id: example
+  - hooks:
+      - id: example
+    rev: $LIGHT_TAG  # frozen: v2.0.0
+EOF
+cp "$tmp/norepo.yaml" "$tmp/norepo.before"
+assert_status 2 "write exits 2" --file "$tmp/norepo.yaml"
+assert_grep "a rev outside an entry with a repo" "$tmp/err" "reports the orphaned rev"
+assert_same "$tmp/norepo.yaml" "$tmp/norepo.before" "file unchanged"
+
 echo "== unquoting a repository does not bypass the option guard =="
 config "$tmp/qinjection.yaml" "'--upload-pack=touch /tmp/poc'" "$TAG_OBJECT" v1.0.0
 cp "$tmp/qinjection.yaml" "$tmp/qinjection.before"
