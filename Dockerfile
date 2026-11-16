@@ -24,8 +24,8 @@ COPY --chown=1001:0 . .
 
 # CGO_ENABLED=0 produces a static binary. The default ubi-minimal runtime
 # supports both static and dynamically linked binaries.
-# This tooling image is not a FIPS service. For production FIPS builds, use
-# GOFIPS140=v1.0.0 with GOEXPERIMENT=noboringcrypto (see container-image-standard.md).
+# This tooling image is not a FIPS service. For production FIPS builds, see
+# https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/container-image-standard.md.
 RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
     --mount=type=cache,target=/opt/app-root/src/.cache/go-build,uid=1001 \
     CGO_ENABLED=0 GOOS=linux \
