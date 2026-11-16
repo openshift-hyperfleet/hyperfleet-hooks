@@ -66,11 +66,11 @@ changes="$workdir/changes"
 : >"$resolved"
 : >"$changes"
 
-# awks share the same view of a pin: a remote entry carries `repo: <url>` and
-# `rev: <40-hex SHA>  # frozen: <tag>`, where both values may be quoted.
-# Unquote() gives both passes the same key, and `rev` matches only the shape the
-# pre-commit guide requires, so every other remote rev is reported rather than
-# skipped.
+# awks share the same view of an entry: YAML mapping keys have no fixed order, so
+# both passes track the `repos:` sequence and reset the repository at each entry
+# instead of trusting `repo:` to open it. `unquote()` gives both passes the same
+# key, and `rev` matches only the shape the pre-commit guide requires, so every
+# other remote rev is reported rather than skipped.
 AWK_QUOTES='
     function unquote(value) {
         if (length(value) >= 2) {
@@ -82,46 +82,79 @@ AWK_QUOTES='
         }
         return value
     }
+    function sha_of(line) {
+        sha = line
+        sub(/^[[:space:]]*rev:[[:space:]]*/, "", sha)
+        sub(/[[:space:]]*#.*/, "", sha)
+        gsub(quote, "", sha)
+        return sha
+    }
+    function tag_of(line) {
+        tag = line
+        sub(/.*frozen:[[:space:]]*/, "", tag)
+        return tag
+    }
     BEGIN {
         quote = "[\"" sq "]"
         optional = quote "?"
-        repo_re = "^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(\"[^\"]*\"|" sq "[^" sq "]*" sq "|[^[:space:]#]+)"
+        entry_indent = -1
+        repo_re = "^[[:space:]]*(-[[:space:]]*)?repo:[[:space:]]*(\"[^\"]*\"|" sq "[^" sq "]*" sq "|[^[:space:]#]+)"
         rev = "^[[:space:]]*rev:[[:space:]]*" optional "[0-9a-fA-F]+" optional \
               "[[:space:]]*#[[:space:]]*frozen:[[:space:]]*[^[:space:]]+"
         rev_line = "^[[:space:]]*rev:[[:space:]]*[^[:space:]#]+"
+        repos_re = "^repos:[[:space:]]*(#.*)?$"
     }
 '
 
-# Emit "OK<TAB>repo<TAB>tag<TAB>sha" per conforming pin and
-# "BAD<TAB>repo<TAB>raw line" per remote rev that is not one.
+# Emit "OK<TAB>repo<TAB>tag<TAB>sha" per conforming pin, "BAD<TAB>repo<TAB>raw
+# line" per remote rev that is not one, and "NOREPO<TAB>-<TAB>raw line" per rev
+# in an entry without a repository.
 awk -v sq="'" "$AWK_QUOTES"'
-    {
-        if (match($0, repo_re)) {
-            repo = substr($0, RSTART, RLENGTH)
-            sub(/^[[:space:]]*-[[:space:]]*repo:[[:space:]]*/, "", repo)
-            repo = unquote(repo)
+    function flush_pin() {
+        if (pending == "") return
+        if (repo == "local") {
+            pending = ""
+            return
         }
-        if (match($0, rev)) {
-            pin = substr($0, RSTART, RLENGTH)
-            sha = pin
-            sub(/^[[:space:]]*rev:[[:space:]]*/, "", sha)
-            sub(/[[:space:]]*#.*/, "", sha)
-            gsub(quote, "", sha)
-            tag = pin
-            sub(/.*frozen:[[:space:]]*/, "", tag)
-            if (repo != "" && repo != "local" && length(sha) == 40) {
-                printf "OK\t%s\t%s\t%s\n", repo, tag, sha
-            } else if (repo != "" && repo != "local") {
-                printf "BAD\t%s\t%s\n", repo, $0
+        if (repo == "") {
+            printf "NOREPO\t-\t%s\n", pending
+        } else if (pending ~ rev) {
+            sha = sha_of(pending)
+            if (length(sha) == 40) {
+                printf "OK\t%s\t%s\t%s\n", repo, tag_of(pending), sha
+            } else {
+                printf "BAD\t%s\t%s\n", repo, pending
             }
+        } else {
+            printf "BAD\t%s\t%s\n", repo, pending
+        }
+        pending = ""
+    }
+    {
+        if ($0 ~ repos_re) {
+            in_repos = 1
             next
         }
-        if (match($0, rev_line)) {
-            if (repo != "" && repo != "local") {
-                printf "BAD\t%s\t%s\n", repo, $0
+        if (!in_repos) next
+        if (match($0, /^[[:space:]]*-/)) {
+            dash = RLENGTH - 1
+            if (entry_indent < 0) entry_indent = dash
+            if (dash == entry_indent) {
+                flush_pin()
+                repo = ""
             }
         }
+        if (match($0, repo_re)) {
+            value = substr($0, RSTART, RLENGTH)
+            sub(/^[[:space:]]*(-[[:space:]]*)?repo:[[:space:]]*/, "", value)
+            repo = unquote(value)
+            next
+        }
+        if (match($0, rev) || match($0, rev_line)) {
+            pending = $0
+        }
     }
+    END { flush_pin() }
 ' "$CONFIG" >"$pins" || { echo "ERROR: could not read ${CONFIG}" >&2; exit 2; }
 
 # Print the commit the tag peels to. Fetches the tag ref and its peeled ref in
@@ -149,6 +182,10 @@ while IFS=$'\t' read -r kind repo rest; do
     case "$kind" in
         BAD)
             echo "ERROR: ${CONFIG}: ${repo}: a remote rev must be '<40-hex SHA>  # frozen: <tag>': ${rest}" >&2
+            unparsable=1
+            ;;
+        NOREPO)
+            echo "ERROR: ${CONFIG}: a rev outside an entry with a repo: ${rest}" >&2
             unparsable=1
             ;;
         OK)
@@ -211,8 +248,18 @@ if [ "$MODE" = "check" ]; then
     exit 1
 fi
 
-# Rewrite only the rev lines whose repo, tag and current SHA match a change.
+# Rewrite only the rev lines whose repo, tag and current SHA match a change. The
+# output is buffered because a rev can precede its repo: the line is patched once
+# the entry ends and its repository is known.
 awk -v sq="'" -v changes="$changes" "$AWK_QUOTES"'
+    function flush_pin(   key) {
+        if (pending == 0) return
+        if (repo != "" && repo != "local") {
+            key = repo "|" pending_tag "|" pending_sha
+            if (key in map) sub(pending_sha, map[key], lines[pending])
+        }
+        pending = 0
+    }
     BEGIN {
         FS = "\t"
         while ((getline line < changes) > 0) {
@@ -221,28 +268,30 @@ awk -v sq="'" -v changes="$changes" "$AWK_QUOTES"'
         }
     }
     {
-        if (match($0, repo_re)) {
-            repo = substr($0, RSTART, RLENGTH)
-            sub(/^[[:space:]]*-[[:space:]]*repo:[[:space:]]*/, "", repo)
-            repo = unquote(repo)
-        }
-        if (match($0, rev)) {
-            pin = substr($0, RSTART, RLENGTH)
-            sha = pin
-            sub(/^[[:space:]]*rev:[[:space:]]*/, "", sha)
-            sub(/[[:space:]]*#.*/, "", sha)
-            gsub(quote, "", sha)
-            tag = pin
-            sub(/.*frozen:[[:space:]]*/, "", tag)
-            key = repo "|" tag "|" sha
-            if (repo != "" && (key in map)) {
-                line = $0
-                sub(sha, map[key], line)
-                print line
-                next
+        lines[++count] = $0
+        if ($0 ~ repos_re) in_repos = 1
+        if (in_repos && match($0, /^[[:space:]]*-/)) {
+            dash = RLENGTH - 1
+            if (entry_indent < 0) entry_indent = dash
+            if (dash == entry_indent) {
+                flush_pin()
+                repo = ""
             }
         }
-        print
+        if (in_repos && match($0, repo_re)) {
+            value = substr($0, RSTART, RLENGTH)
+            sub(/^[[:space:]]*(-[[:space:]]*)?repo:[[:space:]]*/, "", value)
+            repo = unquote(value)
+            flush_pin()
+        } else if (in_repos && match($0, rev)) {
+            pending = count
+            pending_sha = sha_of($0)
+            pending_tag = tag_of($0)
+        }
+    }
+    END {
+        flush_pin()
+        for (i = 1; i <= count; i++) print lines[i]
     }
 ' "$CONFIG" >"$workdir/config.yaml" || { echo "ERROR: rewrite failed" >&2; exit 2; }
 
