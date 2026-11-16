@@ -90,13 +90,14 @@ repos:
 EOF
 }
 
-run() { "$subject" "$@" >"$tmp/out" 2>"$tmp/err"; }
-
 # assert_status <expected exit> <description> <script args...>
-assert_status() {
-    local expected="$1" desc="$2" rc
-    shift 2
-    run "$@"
+assert_status() { assert_status_env "" "$@"; }
+
+# assert_status_env <path prefix> <expected exit> <description> <script args...>
+assert_status_env() {
+    local prefix="$1" expected="$2" desc="$3" rc
+    shift 3
+    PATH="${prefix:+${prefix}:}${PATH}" "$subject" "$@" >"$tmp/out" 2>"$tmp/err"
     rc=$?
     if [ "$rc" -eq "$expected" ]; then
         pass "$desc"
@@ -127,7 +128,7 @@ assert_same() {
 echo "== an annotated tag object is repinned to its commit =="
 config "$tmp/annotated.yaml" https://example.test/annotated "$TAG_OBJECT" v1.0.0
 assert_status 1 "check exits 1 on drift" --check --file "$tmp/annotated.yaml"
-assert_grep "${TAG_OBJECT}.*tag object" "$tmp/out" "check names the tag object"
+assert_grep "${TAG_OBJECT}.*commit is ${COMMIT}" "$tmp/out" "check names the pinned and the peeled commit"
 assert_status 0 "write exits 0" --file "$tmp/annotated.yaml"
 assert_grep "rev: ${COMMIT}" "$tmp/annotated.yaml" "pin holds the commit"
 assert_grep "# frozen: v1.0.0" "$tmp/annotated.yaml" "release comment survives"
@@ -162,11 +163,34 @@ assert_grep "git ls-remote failed" "$tmp/err" "reports the failed lookup"
 assert_same "$tmp/unreachable.yaml" "$tmp/unreachable.before" "file unchanged"
 
 echo "== an option-like repository is refused =="
-config "$tmp/injection.yaml" "--upload-pack=touch${IFS}/tmp/poc" "$TAG_OBJECT" v1.0.0
+config "$tmp/injection.yaml" "--upload-pack=touch /tmp/poc" "$TAG_OBJECT" v1.0.0
 cp "$tmp/injection.yaml" "$tmp/injection.before"
 assert_status 2 "exits 2" --file "$tmp/injection.yaml"
 assert_grep "option-like repository" "$tmp/err" "reports the rejected value"
 assert_same "$tmp/injection.yaml" "$tmp/injection.before" "file unchanged"
+
+echo "== a failing awk is an error, not a clean run =="
+mkdir -p "$tmp/noawk"
+printf '#!/usr/bin/env bash\nexit 1\n' >"$tmp/noawk/awk"
+chmod +x "$tmp/noawk/awk"
+config "$tmp/readable.yaml" https://example.test/annotated "$TAG_OBJECT" v1.0.0
+cp "$tmp/readable.yaml" "$tmp/readable.before"
+assert_status_env "$tmp/noawk" 2 "exits 2" --file "$tmp/readable.yaml"
+assert_grep "could not read" "$tmp/err" "reports the unreadable config"
+assert_same "$tmp/readable.yaml" "$tmp/readable.before" "file unchanged"
+
+echo "== a config with nothing pinned says so =="
+cat >"$tmp/nothing.yaml" <<EOF
+repos:
+  - repo: local
+    hooks:
+      - id: local-hook
+        name: local hook
+        entry: "true"
+        language: system
+EOF
+assert_status 0 "check exits 0" --check --file "$tmp/nothing.yaml"
+assert_grep "no frozen revisions to verify" "$tmp/out" "says there was nothing to verify"
 
 echo "== local entries and tag-style revisions are ignored =="
 cat >"$tmp/mixed.yaml" <<EOF
