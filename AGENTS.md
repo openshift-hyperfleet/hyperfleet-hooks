@@ -13,9 +13,8 @@ Go 1.26.0 · Cobra CLI · go-git · go-github · stretchr/testify · golangci-li
 | `make lint` | golangci-lint (pinned in tools/go.mod, config: `.golangci.yml`) |
 | `make gofmt` | Format Go code (`gofmt -s`) |
 | `make go-vet` | `go vet ./...` |
-| `make test` | Unit tests with race detection + coverage profile |
+| `make test` | `scripts/tests/freeze-pins-test.sh` + Go unit tests with race detection + coverage profile |
 | `make test-coverage` | `make test` + opens HTML coverage report |
-| `make test-scripts` | Offline tests for `scripts/` (stubbed git, no network) |
 | `make install-hooks` | Install the repo's pre-commit hooks (`.pre-commit-config.yaml`) |
 | `make hooks-update` | `pre-commit autoupdate --freeze` + repin every frozen revision to its commit (`scripts/freeze-pins.sh`) |
 | `make verify-hooks` | Fail when a frozen revision is pinned to a tag object instead of a commit |
@@ -43,7 +42,7 @@ hyperfleet-hooks version                        # Print version info
 | Pre-commit hook definitions | `.pre-commit-hooks.yaml` |
 | This repo's own pre-commit config | `.pre-commit-config.yaml` (dogfoods the published hooks at the release tag) |
 | Pre-commit pin normalization | `scripts/freeze-pins.sh` (`make hooks-update`, `make verify-hooks`) |
-| Tests for the pin script | `scripts/tests/freeze-pins-test.sh` (`make test-scripts`) |
+| Tests for the pin script | `scripts/tests/freeze-pins-test.sh` (runs as part of `make test`) |
 | Validation logic | `pkg/commitlint/validator.go` |
 | GitHub API client | `pkg/github/client.go` |
 | Prow JOB_SPEC parsing | `pkg/prow/jobspec.go` |
