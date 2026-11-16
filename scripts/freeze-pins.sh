@@ -10,7 +10,12 @@
 # "Update ... digest" PR on every scheduled run. Pinning the commit keeps both
 # sides in agreement and keeps the release tag in the comment.
 #
-# Exit codes: 0 ok, 1 drift found (--check), 2 usage, resolution or
+# Every remote entry must therefore be a full 40-character SHA with a
+# `# frozen: <tag>` comment, the shape the pre-commit guide requires; a rev that
+# is a tag or a bare SHA without the comment is an error instead of being
+# skipped. `repo: local` entries are exempt.
+#
+# Exit codes: 0 ok, 1 drift found (--check), 2 usage, resolution, format or
 # verification error.
 
 set -uo pipefail
@@ -28,7 +33,10 @@ Usage:
   scripts/freeze-pins.sh --file <path>      # operate on another config
   scripts/freeze-pins.sh --check --file <p>
 
-Exit codes: 0 ok, 1 drift found (--check), 2 usage, resolution or
+Every remote rev must be '<40-hex SHA>  # frozen: <tag>'; `repo: local`
+entries are exempt.
+
+Exit codes: 0 ok, 1 drift found (--check), 2 usage, resolution, format or
 verification error.
 EOF
 }
@@ -58,27 +66,40 @@ changes="$workdir/changes"
 : >"$resolved"
 : >"$changes"
 
-# awks share the same view of a pinned revision: `rev: <sha>  # frozen: <tag>`,
-# where the SHA may be quoted. REV matches a parsable 40-hex pin, LOOSE catches
-# any rev carrying a frozen comment so an unparsable one is reported, not
+# awks share the same view of a pin: a remote entry carries `repo: <url>` and
+# `rev: <40-hex SHA>  # frozen: <tag>`, where both values may be quoted.
+# Unquote() gives both passes the same key, and `rev` matches only the shape the
+# pre-commit guide requires, so every other remote rev is reported rather than
 # skipped.
 AWK_QUOTES='
+    function unquote(value) {
+        if (length(value) >= 2) {
+            first = substr(value, 1, 1)
+            last = substr(value, length(value), 1)
+            if (first == last && first ~ quote) {
+                return substr(value, 2, length(value) - 2)
+            }
+        }
+        return value
+    }
     BEGIN {
         quote = "[\"" sq "]"
         optional = quote "?"
+        repo_re = "^[[:space:]]*-[[:space:]]*repo:[[:space:]]*(\"[^\"]*\"|" sq "[^" sq "]*" sq "|[^[:space:]#]+)"
         rev = "^[[:space:]]*rev:[[:space:]]*" optional "[0-9a-fA-F]+" optional \
               "[[:space:]]*#[[:space:]]*frozen:[[:space:]]*[^[:space:]]+"
-        loose = "^[[:space:]]*rev:.*#[[:space:]]*frozen:"
+        rev_line = "^[[:space:]]*rev:[[:space:]]*[^[:space:]#]+"
     }
 '
 
-# Emit "OK<TAB>repo<TAB>tag<TAB>sha" per parsable pin and
-# "BAD<TAB>repo<TAB>raw line" per frozen revision that cannot be parsed.
+# Emit "OK<TAB>repo<TAB>tag<TAB>sha" per conforming pin and
+# "BAD<TAB>repo<TAB>raw line" per remote rev that is not one.
 awk -v sq="'" "$AWK_QUOTES"'
     {
-        if (match($0, /^[[:space:]]*-[[:space:]]*repo:[[:space:]]*[^[:space:]#]+/)) {
+        if (match($0, repo_re)) {
             repo = substr($0, RSTART, RLENGTH)
             sub(/^[[:space:]]*-[[:space:]]*repo:[[:space:]]*/, "", repo)
+            repo = unquote(repo)
         }
         if (match($0, rev)) {
             pin = substr($0, RSTART, RLENGTH)
@@ -88,15 +109,17 @@ awk -v sq="'" "$AWK_QUOTES"'
             gsub(quote, "", sha)
             tag = pin
             sub(/.*frozen:[[:space:]]*/, "", tag)
-            if (repo != "" && length(sha) == 40) {
+            if (repo != "" && repo != "local" && length(sha) == 40) {
                 printf "OK\t%s\t%s\t%s\n", repo, tag, sha
-            } else {
+            } else if (repo != "" && repo != "local") {
                 printf "BAD\t%s\t%s\n", repo, $0
             }
             next
         }
-        if (match($0, loose)) {
-            printf "BAD\t%s\t%s\n", repo, $0
+        if (match($0, rev_line)) {
+            if (repo != "" && repo != "local") {
+                printf "BAD\t%s\t%s\n", repo, $0
+            }
         }
     }
 ' "$CONFIG" >"$pins" || { echo "ERROR: could not read ${CONFIG}" >&2; exit 2; }
@@ -125,7 +148,7 @@ checked=0
 while IFS=$'\t' read -r kind repo rest; do
     case "$kind" in
         BAD)
-            echo "ERROR: cannot parse the frozen revision at ${CONFIG}: ${rest}" >&2
+            echo "ERROR: ${CONFIG}: ${repo}: a remote rev must be '<40-hex SHA>  # frozen: <tag>': ${rest}" >&2
             unparsable=1
             ;;
         OK)
@@ -166,7 +189,7 @@ if [ "$drift" -eq 0 ]; then
         exit 2
     fi
     if [ "$checked" -eq 0 ]; then
-        echo "${CONFIG}: no frozen revisions to verify"
+        echo "${CONFIG}: no remote revisions to verify"
         exit 0
     fi
     [ "$MODE" = "check" ] && echo "${CONFIG}: all pins point at commits"
@@ -198,9 +221,10 @@ awk -v sq="'" -v changes="$changes" "$AWK_QUOTES"'
         }
     }
     {
-        if (match($0, /^[[:space:]]*-[[:space:]]*repo:[[:space:]]*[^[:space:]#]+/)) {
+        if (match($0, repo_re)) {
             repo = substr($0, RSTART, RLENGTH)
             sub(/^[[:space:]]*-[[:space:]]*repo:[[:space:]]*/, "", repo)
+            repo = unquote(repo)
         }
         if (match($0, rev)) {
             pin = substr($0, RSTART, RLENGTH)

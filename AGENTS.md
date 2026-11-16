@@ -17,7 +17,7 @@ Go 1.26.0 · Cobra CLI · go-git · go-github · stretchr/testify · golangci-li
 | `make test-coverage` | `make test` + opens HTML coverage report |
 | `make install-hooks` | Install the repo's pre-commit hooks (`.pre-commit-config.yaml`) |
 | `make hooks-update` | `pre-commit autoupdate --freeze` + repin every frozen revision to its commit (`scripts/freeze-pins.sh`) |
-| `make verify-hooks` | Fail when a frozen revision is pinned to a tag object instead of a commit |
+| `make verify-hooks` | Fail when a remote `rev` is not `<40-hex SHA>  # frozen: <tag>` or does not point at the commit |
 | `make validate-commits` | Build + `hyperfleet-hooks commitlint --pr --commits` (needs the Prow PR env) |
 | `make image` | Build container image (podman/docker auto-detected) |
 
@@ -114,7 +114,7 @@ Commit format: `[<JIRA_PROJECT_ID>-<TICKET_NUM> - ]<type>: <subject>`
 
 - **Container image is the primary distribution mechanism** — components don't install the binary, they reference `quay.io/openshift-hyperfleet/hyperfleet-git-hooks:latest` in Prow job specs
 - **This repo dogfoods its own hooks** — `.pre-commit-config.yaml` references `openshift-hyperfleet/hyperfleet-hooks` at the latest release tag; pre-commit clones it from GitHub even when run inside this repo
-- **`pre-commit autoupdate --freeze` pins the tag object for annotated tags** — `git ls-remote <repo> <tag>` returns the tag object SHA, not the commit, so Renovate resolves `# frozen: <tag>` to a commit that disagrees with the pin and opens a no-op digest PR on every scheduled run. Update with `make hooks-update` (runs the autoupdate and repins to the commit) and check with `make verify-hooks`; never run the bare `autoupdate --freeze` on this repo
+- **`pre-commit autoupdate --freeze` pins the tag object for annotated tags** — `git ls-remote <repo> <tag>` returns the tag object SHA, not the commit, so Renovate resolves `# frozen: <tag>` to a commit that disagrees with the pin and opens a no-op digest PR on every scheduled run. Update with `make hooks-update` (runs the autoupdate and repins to the commit) and check with `make verify-hooks`; never run the bare `autoupdate --freeze` on this repo. `verify-hooks` also rejects any remote `rev` that is not a full SHA with a `# frozen: <tag>` comment, so a tag-style rev cannot pass as a clean run; `repo: local` entries are exempt
 - **Go tooling hooks (`language: system`) require Make targets in consuming repos** — `make lint`, `make gofmt`, `make go-vet` must exist
 - **`GITHUB_TOKEN` optional but recommended in CI** — without it, GitHub API rate limit is 60 req/hr (unauthenticated)
 - **JIRA prefix pattern accepts any project key** — not limited to `HYPERFLEET-`, any `[A-Z][A-Z0-9_]+-\d+` pattern works (OCM, MGDAPI, RHCLOUD, etc.)
