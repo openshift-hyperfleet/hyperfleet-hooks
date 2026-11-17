@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/opt/app-root/src/go/pkg/mod,uid=1001 \
 
 COPY --chown=1001:0 . .
 
-# CGO_ENABLED=0 produces a static binary. The default ubi-minimal runtime
+# CGO_ENABLED=0 produces a static binary. The default ubi9-micro runtime
 # supports both static and dynamically linked binaries.
 # This tooling image is not a FIPS service. For production FIPS builds, see
 # https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/container-image-standard.md.
