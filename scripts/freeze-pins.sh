@@ -22,6 +22,7 @@ set -uo pipefail
 
 CONFIG=".pre-commit-config.yaml"
 MODE="write"
+CUSTOM_CONFIG=0
 
 usage() {
     cat <<'EOF'
@@ -47,6 +48,7 @@ while [ $# -gt 0 ]; do
         --file)
             [ $# -ge 2 ] || { echo "ERROR: --file needs a path" >&2; exit 2; }
             CONFIG="$2"
+            CUSTOM_CONFIG=1
             shift
             ;;
         -h|--help) usage; exit 0 ;;
@@ -84,7 +86,7 @@ AWK_QUOTES='
     }
     function sha_of(line) {
         sha = line
-        sub(/^[[:space:]]*rev:[[:space:]]*/, "", sha)
+        sub(/^[[:space:]]*(-[[:space:]]*)?rev:[[:space:]]*/, "", sha)
         sub(/[[:space:]]*#.*/, "", sha)
         gsub(quote, "", sha)
         return sha
@@ -99,9 +101,9 @@ AWK_QUOTES='
         optional = quote "?"
         entry_indent = -1
         repo_re = "^[[:space:]]*(-[[:space:]]*)?repo:[[:space:]]*(\"[^\"]*\"|" sq "[^" sq "]*" sq "|[^[:space:]#]+)"
-        rev = "^[[:space:]]*rev:[[:space:]]*" optional "[0-9a-fA-F]+" optional \
+        rev = "^[[:space:]]*(-[[:space:]]*)?rev:[[:space:]]*" optional "[0-9a-fA-F]+" optional \
               "[[:space:]]*#[[:space:]]*frozen:[[:space:]]*[^[:space:]]+"
-        rev_line = "^[[:space:]]*rev:[[:space:]]*[^[:space:]#]+"
+        rev_line = "^[[:space:]]*(-[[:space:]]*)?rev:[[:space:]]*[^[:space:]#]+"
         repos_re = "^repos:[[:space:]]*(#.*)?$"
     }
 '
@@ -243,7 +245,11 @@ if [ "$MODE" = "check" ]; then
     while IFS=$'\t' read -r repo tag sha commit; do
         echo "${CONFIG}: ${repo} ${tag} is pinned to ${sha}, commit is ${commit}"
     done <"$changes"
-    echo "ERROR: repin with 'pre-commit autoupdate --freeze && scripts/freeze-pins.sh'" >&2
+    if [ "$CUSTOM_CONFIG" -eq 1 ]; then
+        echo "ERROR: repin with 'pre-commit autoupdate --freeze --config ${CONFIG} && $0 --file ${CONFIG}'" >&2
+    else
+        echo "ERROR: repin with 'make hooks-update'" >&2
+    fi
     [ "$unresolved" -eq 0 ] || exit 2
     exit 1
 fi
