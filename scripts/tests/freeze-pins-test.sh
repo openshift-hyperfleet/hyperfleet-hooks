@@ -358,6 +358,40 @@ else
 fi
 assert_grep "make hooks-update" "$tmp/err" "names the make target"
 
+echo "== a quoted root key is still read =="
+cat >"$tmp/qroot.yaml" <<EOF
+'repos':
+  - repo: https://example.test/annotated
+    rev: $TAG_OBJECT  # frozen: v1.0.0
+    hooks:
+      - id: example
+EOF
+assert_status 1 "check exits 1 on drift" --check --file "$tmp/qroot.yaml"
+assert_status 0 "write exits 0" --file "$tmp/qroot.yaml"
+assert_grep "rev: ${COMMIT}" "$tmp/qroot.yaml" "quoted root key repinned"
+
+cat >"$tmp/qroottag.yaml" <<EOF
+"repos":
+  - repo: https://example.test/light
+    rev: v2.0.0
+    hooks:
+      - id: example
+EOF
+cp "$tmp/qroottag.yaml" "$tmp/qroottag.before"
+assert_status 2 "check exits 2" --check --file "$tmp/qroottag.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the tag revision"
+assert_same "$tmp/qroottag.yaml" "$tmp/qroottag.before" "file unchanged"
+
+echo "== a file without a repos: sequence is an error =="
+printf 'something: else\n' >"$tmp/notconfig.yaml"
+assert_status 2 "check exits 2" --check --file "$tmp/notconfig.yaml"
+assert_grep "no repos: sequence found" "$tmp/err" "reports the missing sequence"
+
+echo "== an empty repos: list verifies nothing =="
+printf 'repos: []\n' >"$tmp/emptyrepos.yaml"
+assert_status 0 "check exits 0" --check --file "$tmp/emptyrepos.yaml"
+assert_grep "no remote revisions to verify" "$tmp/out" "says there was nothing to verify"
+
 echo
 if [ "$failures" -ne 0 ]; then
     printf '%d check(s) failed\n' "$failures" >&2
