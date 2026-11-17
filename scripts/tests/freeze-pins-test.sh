@@ -129,6 +129,7 @@ echo "== an annotated tag object is repinned to its commit =="
 config "$tmp/annotated.yaml" https://example.test/annotated "$TAG_OBJECT" v1.0.0
 assert_status 1 "check exits 1 on drift" --check --file "$tmp/annotated.yaml"
 assert_grep "${TAG_OBJECT}.*commit is ${COMMIT}" "$tmp/out" "check names the pinned and the peeled commit"
+assert_grep "--config ${tmp}/annotated.yaml" "$tmp/err" "hint keeps the --file path"
 assert_status 0 "write exits 0" --file "$tmp/annotated.yaml"
 assert_grep "rev: ${COMMIT}" "$tmp/annotated.yaml" "pin holds the commit"
 assert_grep "# frozen: v1.0.0" "$tmp/annotated.yaml" "release comment survives"
@@ -317,6 +318,45 @@ cp "$tmp/qinjection.yaml" "$tmp/qinjection.before"
 assert_status 2 "exits 2" --file "$tmp/qinjection.yaml"
 assert_grep "option-like repository" "$tmp/err" "reports the quoted rejected value"
 assert_same "$tmp/qinjection.yaml" "$tmp/qinjection.before" "file unchanged"
+
+echo "== a rev on the entry's opening dash line is parsed =="
+cat >"$tmp/dashrev.yaml" <<EOF
+repos:
+  - rev: $TAG_OBJECT  # frozen: v1.0.0
+    repo: https://example.test/annotated
+    hooks:
+      - id: example
+EOF
+assert_status 1 "check exits 1 on drift" --check --file "$tmp/dashrev.yaml"
+assert_status 0 "write exits 0" --file "$tmp/dashrev.yaml"
+assert_grep "rev: ${COMMIT}  # frozen: v1.0.0" "$tmp/dashrev.yaml" "dash-line pin repinned"
+
+cat >"$tmp/dashrevtag.yaml" <<EOF
+repos:
+  - rev: v2.0.0
+    repo: https://example.test/light
+    hooks:
+      - id: example
+EOF
+cp "$tmp/dashrevtag.yaml" "$tmp/dashrevtag.before"
+assert_status 2 "check exits 2" --check --file "$tmp/dashrevtag.yaml"
+assert_grep "a remote rev must be" "$tmp/err" "reports the dash-line tag revision"
+assert_same "$tmp/dashrevtag.yaml" "$tmp/dashrevtag.before" "file unchanged"
+
+echo "== the default config points the hint at make hooks-update =="
+mkdir -p "$tmp/default"
+config "$tmp/default/.pre-commit-config.yaml" https://example.test/annotated "$TAG_OBJECT" v1.0.0
+run_dir=$PWD
+cd "$tmp/default" || exit 2
+"$subject" --check >"$tmp/out" 2>"$tmp/err"
+rc=$?
+cd "$run_dir" || exit 2
+if [ "$rc" -eq 1 ]; then
+    pass "check exits 1"
+else
+    fail "check exits 1 (exit ${rc}, want 1)"
+fi
+assert_grep "make hooks-update" "$tmp/err" "names the make target"
 
 echo
 if [ "$failures" -ne 0 ]; then
