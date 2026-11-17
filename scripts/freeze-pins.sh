@@ -104,13 +104,14 @@ AWK_QUOTES='
         rev = "^[[:space:]]*(-[[:space:]]*)?rev:[[:space:]]*" optional "[0-9a-fA-F]+" optional \
               "[[:space:]]*#[[:space:]]*frozen:[[:space:]]*[^[:space:]]+"
         rev_line = "^[[:space:]]*(-[[:space:]]*)?rev:[[:space:]]*[^[:space:]#]+"
-        repos_re = "^repos:[[:space:]]*(#.*)?$"
+        repos_re = "^[[:space:]]*" optional "repos" optional "[[:space:]]*:[[:space:]]*(\\[\\][[:space:]]*)?(#.*)?$"
     }
 '
 
 # Emit "OK<TAB>repo<TAB>tag<TAB>sha" per conforming pin, "BAD<TAB>repo<TAB>raw
-# line" per remote rev that is not one, and "NOREPO<TAB>-<TAB>raw line" per rev
-# in an entry without a repository.
+# line" per remote rev that is not one, "NOREPO<TAB>-<TAB>raw line" per rev in an
+# entry without a repository, and "NOREPOS<TAB>-<TAB>-" when the file has no
+# repos: sequence at all.
 awk -v sq="'" "$AWK_QUOTES"'
     function flush_pin() {
         if (pending == "") return
@@ -135,6 +136,7 @@ awk -v sq="'" "$AWK_QUOTES"'
     {
         if ($0 ~ repos_re) {
             in_repos = 1
+            saw_repos = 1
             next
         }
         if (!in_repos) next
@@ -156,7 +158,10 @@ awk -v sq="'" "$AWK_QUOTES"'
             pending = $0
         }
     }
-    END { flush_pin() }
+    END {
+        flush_pin()
+        if (!saw_repos) printf "NOREPOS\t-\t-\n"
+    }
 ' "$CONFIG" >"$pins" || { echo "ERROR: could not read ${CONFIG}" >&2; exit 2; }
 
 # Print the commit the tag peels to. Fetches the tag ref and its peeled ref in
@@ -188,6 +193,10 @@ while IFS=$'\t' read -r kind repo rest; do
             ;;
         NOREPO)
             echo "ERROR: ${CONFIG}: a rev outside an entry with a repo: ${rest}" >&2
+            unparsable=1
+            ;;
+        NOREPOS)
+            echo "ERROR: ${CONFIG}: no repos: sequence found; expected a pre-commit config" >&2
             unparsable=1
             ;;
         OK)
